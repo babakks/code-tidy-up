@@ -1,6 +1,10 @@
 import { EndOfLine } from "vscode";
 
-export function fixWidth(eol: EndOfLine, text: string, width: number): string {
+export function fixWidth(
+  eolType: EndOfLine,
+  text: string,
+  width: number
+): string {
   let residue = text;
   let result: string = "";
 
@@ -10,7 +14,9 @@ export function fixWidth(eol: EndOfLine, text: string, width: number): string {
       continue;
     }
 
-    const lastWhitespaceIndex = residue.substring(0, width).lastIndexOf(" ");
+    const lastWhitespaceIndex = residue
+      .substring(0, width + 1)
+      .lastIndexOf(" ");
     let breakAt: number;
 
     if (lastWhitespaceIndex !== -1) {
@@ -21,18 +27,21 @@ export function fixWidth(eol: EndOfLine, text: string, width: number): string {
         firstWhitespaceIndex !== -1 ? firstWhitespaceIndex : residue.length;
     }
 
-    if (result === "") {
-      result += residue.substring(0, breakAt);
-    } else {
-      result +=
-        (result !== "" ? (eol === EndOfLine.LF ? "\n" : "\r\n") : "") +
-        residue.substring(0, breakAt);
-    }
-    
+    result +=
+      (result !== "" ? getEOL(eolType) : "") + residue.substring(0, breakAt);
+
     residue = residue.substring(breakAt + 1);
   }
 
-  result += (eol === EndOfLine.LF ? "\n" : "\r\n") + residue;
+  result += getEOL(eolType) + residue;
 
   return result;
+}
+
+export function getLinesArray(eolType: EndOfLine, text: string): string[] {
+  return text.split(getEOL(eolType)).map(x => x.trim());
+}
+
+export function getEOL(eolType: EndOfLine): string {
+  return eolType === EndOfLine.LF ? "\n" : "\r\n";
 }

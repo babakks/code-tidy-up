@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
-import { EndOfLine } from "vscode";
+import { getLinesArray } from "../utils/text-helper";
+import { Parser } from "../model/parser";
+import { CommentContent } from "../model/comment-content";
+import { JSDocCommentBlockFormatHints } from "./js-doc-comment-block-format-hints";
 
-export class JSDocFormatParser {
+export class JSDocCommentBlockParser implements Parser {
   findRange(
     document: vscode.TextDocument,
-    editor: vscode.TextEditor,
     position: vscode.Position
   ): vscode.Range | undefined {
     const endU = this.findTrimmedLine(
@@ -95,7 +97,7 @@ export class JSDocFormatParser {
     const text = document.getText(
       new vscode.Range(start, 0, end, endLineLength)
     );
-    const lines = this.getLinesArray(document.eol, text);
+    const lines = getLinesArray(document.eol, text);
 
     return lines.every(x => {
       const trimmed = x.trim();
@@ -103,42 +105,25 @@ export class JSDocFormatParser {
     });
   }
 
-  getCommentContent(
+  getContent(
     document: vscode.TextDocument,
     range: vscode.Range
-  ): string {
-    const lines = this.getLinesArray(document.eol, document.getText(range));
-    return lines.reduce((result, x) => {
-      const text = x.trim();
-      return text === "/**" || text === "*/"
-        ? result
-        : result.concat(text.substring(1));
-    }, "");
-  }
+  ): CommentContent | undefined {
+    const lines = getLinesArray(document.eol, document.getText(range));
+    const text = lines
+      .reduce((result, x) => {
+        const text = x.trim();
+        return text === "/**" || text === "*/"
+          ? result
+          : result.concat(text.substring(1));
+      }, "")
+      .trim();
 
-  getCommentIndentation(
-    document: vscode.TextDocument,
-    range: vscode.Range
-  ): number {
-    return (
-      3 + document.lineAt(range.start.line).firstNonWhitespaceCharacterIndex
-    );
-  }
+    const formatHints = new JSDocCommentBlockFormatHints();
+    formatHints.indent =
+      3 + document.lineAt(range.start.line).firstNonWhitespaceCharacterIndex;
 
-  formatContent(eol: EndOfLine, text: string, indent: number): string {
-    const lines = this.getLinesArray(eol, text);
-    const formattedLines: string[] = [];
-    formattedLines.push(" ".repeat(indent - 3) + "/**");
-    lines.forEach(x => {
-      formattedLines.push(" ".repeat(indent - 2) + "* " + x);
-    });
-    formattedLines.push(" ".repeat(indent - 2) + "*/");
-
-    return formattedLines.join(eol === EndOfLine.LF ? "\n" : "\r\n");
-  }
-
-  getLinesArray(eol: EndOfLine, text: string): string[] {
-    return text.split(eol === EndOfLine.LF ? "\n" : "\r\n").map(x => x.trim());
+    return new CommentContent(text, formatHints);
   }
 }
 

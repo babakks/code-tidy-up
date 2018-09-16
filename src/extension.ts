@@ -1,10 +1,13 @@
 import * as vscode from "vscode";
-import { CommentBlockConfig } from "./model/comment-block-config";
-import { CommentBlockExtractor } from "./model/comment-block-extractor";
-import { JSDocCommentBlockFactory } from "./comment-blocks/js-dov-comment-block-factory";
-import { JSDocFormatParser } from "./comment-blocks/js-doc-format-parser";
+import { FormatConfig } from "./model/comment-block-config";
+import { DefaultStyle } from "./styles/default-style";
+import { JSDocCommentBlockFormatter } from "./styles/js-doc-comment-block-formatter";
+import { InlineCommentFormatter } from "./styles/inline-comment-formatter";
+import { DefaultCommentFactory } from "./comment/default-comment-factory";
+import { JSDocCommentBlockParser } from "./styles/js-doc-comment-block-parser";
+import { InlineCommentParser } from "./styles/inline-comment-parser";
 
-let commentBlockExtractor: CommentBlockExtractor;
+let commentFactory: DefaultCommentFactory;
 
 export function activate(context: vscode.ExtensionContext) {
   compose();
@@ -21,18 +24,23 @@ export function deactivate() {}
 
 function compose(): void {
   const config = getConfig();
-  config.tidyWidth = 81;
-  throw new Error("Incorrect trimming.");
 
-  const jsDocParser = new JSDocFormatParser();
-  commentBlockExtractor = new CommentBlockExtractor();
-  commentBlockExtractor.register(
-    new JSDocCommentBlockFactory(jsDocParser, config)
+  const jsDocCommentBlockStyle = new DefaultStyle(
+    new JSDocCommentBlockParser(),
+    new JSDocCommentBlockFormatter(config)
   );
+
+  const inlineCommentStyle = new DefaultStyle(
+    new InlineCommentParser(),
+    new InlineCommentFormatter(config)
+  );
+
+  commentFactory = new DefaultCommentFactory(config);
+  commentFactory.register([jsDocCommentBlockStyle, inlineCommentStyle]);
 }
 
-function getConfig(): CommentBlockConfig {
-  const result = new CommentBlockConfig();
+function getConfig(): FormatConfig {
+  const result = new FormatConfig();
   return result;
 }
 
@@ -47,16 +55,16 @@ function tidyUpCurrentComment() {
   }
 
   const document = editor.document;
-  const commentBlock = commentBlockExtractor.extract(
+  const commentBlock = commentFactory.tryCreate(
     document,
     editor,
     editor.selection.active
   );
 
-  if (commentBlock === undefined) {
+  if (!commentBlock) {
     return;
   }
 
   commentBlock.tidyUp();
-  commentBlock.apply();
+  commentBlock.update();
 }
