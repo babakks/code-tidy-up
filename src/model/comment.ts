@@ -4,5 +4,6 @@ export interface Comment {
   range: vscode.Range;
   content: CommentContent;
   tidyUp(): void;
+  flowerBox(): void;
   update(): void;
 }

@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { FormatConfig } from "../model/comment-block-config";
 import { Formatter } from "../model/formatter";
 import { CommentContent } from "../model/comment-content";
 import { Comment } from "../model/comment";
@@ -10,11 +9,29 @@ export class DefaultComment implements Comment {
     private editor: vscode.TextEditor,
     public readonly range: vscode.Range,
     public content: CommentContent,
-    public formatter: Formatter,
-    private config: FormatConfig
+    public formatter: Formatter
   ) {}
 
   tidyUp(): void {
+    this.fixWidth();
+  }
+
+  flowerBox(): void {
+    this.fixWidth();
+
+    const newContent = this.formatter.flowerBox(
+      this.content,
+      this.document.eol
+    );
+
+    if (!newContent) {
+      throw new Error("Formatter's flowerBox method failed.");
+    }
+
+    this.content = newContent;
+  }
+
+  fixWidth(): void {
     const newContent = this.formatter.fixWidth(this.content, this.document.eol);
 
     if (!newContent) {

@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { FormatConfig } from "../model/comment-block-config";
 import { Style } from "../model/style";
 import { CommentFactory } from "../model/comment-factory";
 import { DefaultComment } from "./default-comment";
@@ -8,7 +7,7 @@ import { Comment } from "../model/comment";
 export class DefaultCommentFactory implements CommentFactory {
   private styles: Style[] = [];
 
-  constructor(private config: FormatConfig) {}
+  constructor() {}
 
   register(styles: Style[]) {
     Array.prototype.push.apply(this.styles, styles);
@@ -34,8 +33,7 @@ export class DefaultCommentFactory implements CommentFactory {
       editor,
       match.range,
       content,
-      match.style.formatter,
-      this.config
+      match.style.formatter
     );
   }
 

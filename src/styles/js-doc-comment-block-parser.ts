@@ -1,10 +1,13 @@
 import * as vscode from "vscode";
-import { getLinesArray } from "../utils/text-helper";
+import { getLinesArray, getEOL } from "../utils/text-helper";
 import { Parser } from "../model/parser";
 import { CommentContent } from "../model/comment-content";
 import { JSDocCommentBlockFormatHints } from "./js-doc-comment-block-format-hints";
+import { FormatOptions } from "../model/format-options";
 
 export class JSDocCommentBlockParser implements Parser {
+  constructor(private config: FormatOptions) {}
+
   findRange(
     document: vscode.TextDocument,
     position: vscode.Position
@@ -109,21 +112,56 @@ export class JSDocCommentBlockParser implements Parser {
     document: vscode.TextDocument,
     range: vscode.Range
   ): CommentContent | undefined {
+    const jsDocKeywordRegex = /^\* \@.*/; // Checks for @keyword at the beginning.
     const lines = getLinesArray(document.eol, document.getText(range));
+    const eol = getEOL(document.eol);
+
+    let passedFirstKeyword = false;
     const text = lines
       .reduce((result, x) => {
         const text = x.trim();
-        return text === "/**" || text === "*/"
-          ? result
-          : result.concat(text.substring(1));
+
+        /** NOTE: Another abstraction level is required. That is, another method
+         * that gets the comment block and translates it into a preformatted
+         * text, just by removing comment marker symbols (// or * in JSDocs).
+         * Thereafter, the control should come to the current method.
+         */
+        
+        if (text === "/**" || text === "*/" || text === "") {
+          return result;
+        }
+
+        if (jsDocKeywordRegex.test(text)) {
+          if (
+            this.config.jsDocCommentBlock.spaceAfterSummary &&
+            !passedFirstKeyword
+          ) {
+            result = result.concat(eol);
+          }
+
+          passedFirstKeyword = true;
+          return result.concat(eol + text.substring(1).trim());
+        } else {
+          return result.concat(text.substring(1));
+        }
       }, "")
       .trim();
 
-    const formatHints = new JSDocCommentBlockFormatHints();
-    formatHints.indent =
-      3 + document.lineAt(range.start.line).firstNonWhitespaceCharacterIndex;
+    const formatHints = this.extractFormatHints(document, range);
 
     return new CommentContent(text, formatHints);
+  }
+
+  extractFormatHints(
+    document: vscode.TextDocument,
+    range: vscode.Range
+  ): JSDocCommentBlockFormatHints {
+    const result = new JSDocCommentBlockFormatHints();
+
+    result.indent =
+      3 + document.lineAt(range.start.line).firstNonWhitespaceCharacterIndex;
+
+    return result;
   }
 }
 

@@ -66,19 +66,32 @@ export class InlineCommentParser implements Parser {
     document: vscode.TextDocument,
     range: vscode.Range
   ): CommentContent | undefined {
-    const regex = /^\s*\/{2,}\s*([^ ]*)\s*/;
+    const contentRegex = /^\s*\/{2,}\s*([^ ]*)\s*/;
     const lines = getLinesArray(document.eol, document.getText(range));
 
     const text = lines.reduce((result, x) => {
-      const text = x.replace(regex, "$1");
-      return result.concat(result !== "" ? " " + text : text);
+      const text = x.replace(contentRegex, "$1").trim();
+      return result.concat(result !== "" && text !== "" ? " " + text : text);
     }, "");
 
-    const formatHints = new InlineCommentFormatHints();
-    formatHints.indent =
-      3 + document.lineAt(range.start.line).firstNonWhitespaceCharacterIndex;
+    const formatHints = this.extractFormatHints(document, range);
 
     return new CommentContent(text, formatHints);
+  }
+
+  extractFormatHints(
+    document: vscode.TextDocument,
+    range: vscode.Range
+  ): InlineCommentFormatHints {
+    const result = new InlineCommentFormatHints();
+
+    const startLine = document.lineAt(range.start.line);
+    result.indent = 3 + startLine.firstNonWhitespaceCharacterIndex;
+
+    const slashesRegexResult = /^(\/{2,})[^/]*/.exec(startLine.text.trim());
+    result.slashes = slashesRegexResult ? slashesRegexResult[1].length : 2;
+
+    return result;
   }
 }
 
