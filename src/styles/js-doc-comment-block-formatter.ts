@@ -1,164 +1,86 @@
 import * as vscode from "vscode";
-import {
-  getEOL,
-  getLinesArray,
-  fixWidth,
-  flowerBox,
-  paragraphToLine
-} from "../utils/text-helper";
+import { getEOL, getLinesArray } from "../utils/text-helper";
 import { Formatter } from "../model/formatter";
-import {
-  FormatOptions,
-  FlowerBoxOptions,
-  FixWidthOptions
-} from "../model/format-options";
+import { FormatOptions } from "../model/format-options";
 import { CommentContent } from "../model/comment-content";
 import { JSDocCommentBlockFormatHints } from "./js-doc-comment-block-format-hints";
-import { JSDocCommentBlockFormatOptions } from "./js-doc-comment-block-format-options";
+import { PlainFormatter } from "./plain-formatter";
+import { cloneInto } from "../utils/clone-into";
 
 export class JSDocCommentBlockFormatter implements Formatter {
-  constructor(private options: FormatOptions) {}
+  constructor(
+    private plainFormatter: PlainFormatter,
+    private options: FormatOptions
+  ) {}
 
   fixWidth(
     content: CommentContent,
     eol: vscode.EndOfLine,
-    options?: FixWidthOptions
+    options?: FormatOptions
   ): CommentContent | undefined {
     this.ensureHints(content.formatHints);
 
     if (!options) {
-      options = this.options.fixWidth;
+      options = this.options;
     }
 
-    const correctedWidth = options.relative
-      ? options.width
-      : Math.max(options.width - content.formatHints.indent, options.minLength);
+    const adjustedWidth = options.fixWidth.relative
+      ? options.fixWidth.width
+      : Math.max(
+          options.fixWidth.width - content.formatHints.indent,
+          options.fixWidth.minLength
+        );
 
-    const paragraphs = paragraphToLine(eol, content.text);
+    let overrideOptions = new FormatOptions();
+    cloneInto(options, overrideOptions);
+    overrideOptions.fixWidth.width = adjustedWidth;
 
-    paragraphs.forEach(x => {
-      const resultText = fixWidth(eol, x, correctedWidth);
-    });
+    return this.plainFormatter.fixWidth(content, eol, overrideOptions);
 
-    if (this.options.jsDocCommentBlock.indentWrappedText) {
-      resultText = this.indentWrappedText(
-        resultText,
-        eol,
-        content.formatHints,
-        options
-      );
-    }
+    // const resultText = content.paragraphs
+    //   .map(x => {
+    //     const correctedWidth =
+    //       adjustedWidth -
+    //       x.formatHints.padding.left -
+    //       x.formatHints.padding.right;
 
-    return new CommentContent(resultText, content.formatHints);
-  }
+    //     return fixWidth(
+    //       eol,
+    //       x.rawContent,
+    //       correctedWidth,
+    //       x.formatHints.firstLineIndent,
+    //       x.formatHints.hangingIndent
+    //     );
+    //   })
+    //   .join(getEOL(eol).repeat(1 + this.options.layout.spaceBetweenParagraphs));
 
-  indentWrappedText(
-    text: string,
-    eol: vscode.EndOfLine,
-    formatHints: JSDocCommentBlockFormatHints,
-    options: FixWidthOptions
-  ): string {
-    /**
-     * To indent wrapped lines, we have to extract every single wrapped
-     * paragraph and adjust their width.
-     */
-
-    const correctedWidth = Math.max(
-      options.width -
-        formatHints.indent -
-        this.options.jsDocCommentBlock.wrappedTextIndentation,
-      options.minLength
-    );
-
-    const lines = getLinesArray(eol, text);
-    const jsDocKeywordRegex = /^\@.*/;
-
-    let wrappedLines: string[] = [];
-    let resultLines: string[] = [];
-    let passedFirstKeyword = false;
-
-    // Adding a dummy keyword line at the end of the lines array to enforce the
-    // up coming algorithm to flush the ending lines into the results.
-    lines.push("@dummy");
-
-    for (let j = 0; j < lines.length; j++) {
-      const line = lines[j];
-      const startWithKeyword = jsDocKeywordRegex.test(line);
-
-      if (!startWithKeyword) {
-        if (passedFirstKeyword) {
-          // Should accumulate coming lines.
-          wrappedLines.push(line);
-        } else {
-          // Yet to encounter a keyword, so pushing into the results.
-          resultLines.push(line);
-        }
-      } else {
-        if (passedFirstKeyword) {
-          // Another keyword encountered, so flushing whatever taken after
-          // fixing their width to the new value.
-          const subparagraph = wrappedLines.join(getEOL(eol));
-          const fixedSubparagraph = fixWidth(eol, subparagraph, correctedWidth);
-
-          Array.prototype.push.apply(
-            resultLines,
-            getLinesArray(eol, fixedSubparagraph).map(
-              x =>
-                " ".repeat(
-                  this.options.jsDocCommentBlock.wrappedTextIndentation
-                ) + x
-            )
-          );
-
-          // Re-accumulating.
-          wrappedLines = [];
-        } else {
-          // First keyword encounter.
-          passedFirstKeyword = true;
-        }
-
-        resultLines.push(line);
-      }
-    }
-
-    resultLines.pop(); // Taking out the "@dummy" line.
-
-    return resultLines.join(getEOL(eol));
+    // return new CommentContent(
+    //   resultText,
+    //   content.paragraphs,
+    //   content.formatHints
+    // );
   }
 
   flowerBox(
     content: CommentContent,
     eol: vscode.EndOfLine,
-    options?: FlowerBoxOptions
+    options?: FormatOptions
   ): CommentContent | undefined {
-    if (content.text.length === 0) {
-      throw new Error("There's no content to flower-box it.");
-    }
-
-    if (!options) {
-      options = this.options.flowerBox;
-    }
-
-    const resultText = flowerBox(eol, content.text, options);
-    if (resultText === undefined) {
-      return undefined;
-    }
-
-    return new CommentContent(resultText, content.formatHints);
+    return this.plainFormatter.flowerBox(content, eol, options);
   }
 
   render(content: CommentContent, eol: vscode.EndOfLine): string | undefined {
     this.ensureHints(content.formatHints);
 
+    const hints = content.formatHints as JSDocCommentBlockFormatHints;
+
     const lines = getLinesArray(eol, content.text, false);
     const formattedLines: string[] = [];
-    formattedLines.push(" ".repeat(content.formatHints.indent - 3) + "/**");
+    formattedLines.push(" ".repeat(hints.indent - 3) + "/**");
     lines.forEach(x => {
-      formattedLines.push(
-        " ".repeat(content.formatHints.indent - 2) + "* " + x
-      );
+      formattedLines.push(" ".repeat(hints.indent - 2) + "* " + x);
     });
-    formattedLines.push(" ".repeat(content.formatHints.indent - 2) + "*/");
+    formattedLines.push(" ".repeat(hints.indent - 2) + "*/");
 
     return formattedLines.join(getEOL(eol));
   }

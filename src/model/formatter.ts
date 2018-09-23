@@ -1,19 +1,23 @@
 import * as vscode from "vscode";
 import { CommentContent } from "./comment-content";
-import { FixWidthOptions, FlowerBoxOptions } from "./format-options";
+import { FormatOptions } from "./format-options";
 
 export interface Formatter {
   fixWidth(
     content: CommentContent,
     eol: vscode.EndOfLine,
-    options?: FixWidthOptions
+    options?: FormatOptions
   ): CommentContent | undefined;
 
   flowerBox(
     content: CommentContent,
     eol: vscode.EndOfLine,
-    options?: FlowerBoxOptions
+    options?: FormatOptions
   ): CommentContent | undefined;
 
-  render(content: CommentContent, eol: vscode.EndOfLine): string | undefined;
+  render(
+    content: CommentContent,
+    eol: vscode.EndOfLine,
+    options?: FormatOptions
+  ): string | undefined;
 }

@@ -1,5 +1,4 @@
 export class JSDocCommentBlockFormatOptions {
-  spaceAfterSummary = true;  
-  indentWrappedText = true;
-  wrappedTextIndentation = 2;
+  spaceAfterSummary = 1;
+  keywordHangingIndentation = 2;
 }

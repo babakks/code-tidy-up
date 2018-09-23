@@ -1,3 +1,3 @@
 export class JSDocCommentBlockFormatHints {
-  indent = 0;
+  indent = 0;  
 }

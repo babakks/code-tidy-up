@@ -1,9 +1,12 @@
 import { JSDocCommentBlockFormatOptions } from "../styles/js-doc-comment-block-format-options";
+import { InlineCommentFormatOptions } from "../styles/inline-comment-format-options";
 
 export class FormatOptions {
-  fixWidth: FixWidthOptions = new FixWidthOptions();
-  flowerBox: FlowerBoxOptions = new FlowerBoxOptions();
-  jsDocCommentBlock: JSDocCommentBlockFormatOptions = new JSDocCommentBlockFormatOptions();
+  layout = new LayoutOptions();
+  fixWidth = new FixWidthOptions();
+  flowerBox = new FlowerBoxOptions();
+  jsDocCommentBlock = new JSDocCommentBlockFormatOptions();
+  inlineComment = new InlineCommentFormatOptions();
 }
 
 export class FixWidthOptions {
@@ -16,4 +19,8 @@ export class FlowerBoxOptions {
   padding = [0, 1, 0, 1];
   edgeWidth = [1, 2, 1, 2];
   edgeChar = "*";
+}
+
+export class LayoutOptions {
+  minSpaceBetweenParagraphs = 0;
 }

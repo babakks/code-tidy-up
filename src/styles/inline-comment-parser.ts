@@ -1,10 +1,13 @@
 import * as vscode from "vscode";
 import { Parser } from "../model/parser";
-import { getLinesArray } from "../utils/text-helper";
+import { getLinesArray, getEOL } from "../utils/text-helper";
 import { CommentContent } from "../model/comment-content";
 import { InlineCommentFormatHints } from "./inline-comment-format-hints";
+import { PlainParser } from "./plain-parser";
 
 export class InlineCommentParser implements Parser {
+  constructor(private plainParser: PlainParser) {}
+
   findRange(
     document: vscode.TextDocument,
     position: vscode.Position
@@ -68,15 +71,26 @@ export class InlineCommentParser implements Parser {
   ): CommentContent | undefined {
     const contentRegex = /^\s*\/{2,}\s*([^ ]*)\s*/;
     const lines = getLinesArray(document.eol, document.getText(range));
+    const plainText = lines.reduce((r, x) =>
+      r.concat(
+        r !== "" ? getEOL(document.eol) : "",
+        x.replace(contentRegex, "$1")
+      )
+    );
 
-    const text = lines.reduce((result, x) => {
-      const text = x.replace(contentRegex, "$1").trim();
-      return result.concat(result !== "" && text !== "" ? " " + text : text);
-    }, "");
+    // Using plain text formatter to get content.
+    const result = this.plainParser.getContentFromPlainText(
+      plainText,
+      document.eol
+    );
 
-    const formatHints = this.extractFormatHints(document, range);
+    if (!result) {
+      return undefined;
+    }
 
-    return new CommentContent(text, formatHints);
+    result.formatHints = this.extractFormatHints(document, range);
+
+    return result;
   }
 
   extractFormatHints(

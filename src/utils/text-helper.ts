@@ -1,24 +1,29 @@
 import { EndOfLine } from "vscode";
 import { FlowerBoxOptions } from "../model/format-options";
+import { Paragraph } from "../model/paragraph";
+import { CommentContent } from "../model/comment-content";
 
 export function fixWidth(
   eolType: EndOfLine,
   text: string,
-  width: number
+  width: number,
+  firstLineIndent: number,
+  hangingIndent: number
 ): string {
+  const eol = getEOL(eolType);
   let residue = text.trim();
   let result: string = "";
-  const eol = getEOL(eolType);
+  let count = 0;
 
-  while (residue.length > width) {
-    if (residue.length <= width) {
-      result = result + residue;
-      continue;
-    }
+  while (true) {
+    const referenceIndent = count === 0 ? firstLineIndent : hangingIndent;
+    const referenceWidth = width - referenceIndent;
+    const newLinePrefix = " ".repeat(referenceIndent);
 
-    const lastWhitespaceIndex = residue
-      .substring(0, width + 1)
-      .lastIndexOf(" ");
+    const lastWhitespaceIndex =
+      residue.length > referenceWidth
+        ? residue.substring(0, referenceWidth + 1).lastIndexOf(" ")
+        : residue.length;
     let breakAt: number;
 
     if (lastWhitespaceIndex !== -1) {
@@ -29,12 +34,19 @@ export function fixWidth(
         firstWhitespaceIndex !== -1 ? firstWhitespaceIndex : residue.length;
     }
 
-    result += (result !== "" ? eol : "") + residue.substring(0, breakAt);
+    result = result.concat(
+      result !== "" ? eol : "",
+      newLinePrefix,
+      residue.substring(0, breakAt)
+    );
 
     residue = residue.substring(breakAt + 1);
-  }
+    count++;
 
-  result += (result !== "" ? getEOL(eolType) : "") + residue;
+    if (residue.length === 0) {
+      break;
+    }
+  }
 
   return result;
 }
@@ -48,18 +60,63 @@ export function getLinesArray(
   return !trimLines ? lines : lines.map(x => x.trim());
 }
 
-export function paragraphToLine(eolType: EndOfLine, text: string): string[] {
-  const lines = getLinesArray(eolType, text);
-  const eol = getEOL(eolType);
-  return lines
-    .map(x => x + (x === "" ? eol : " "))
-    .join("")
-    .split(eol)
-    .map(x => x.trim());
-}
+// export function paragraphToLine(eolType: EndOfLine, text: string): string[] {
+//   const lines = getLinesArray(eolType, text);
+//   const eol = getEOL(eolType);
+//   return lines
+//     .map(x => x + (x === "" ? eol : " "))
+//     .join("")-nv
+//     .split(eol)
+//     .map(x => x.trim());
+// }
 
 export function getEOL(eolType: EndOfLine): string {
   return eolType === EndOfLine.LF ? "\n" : "\r\n";
+}
+
+export function extractContent(
+  eolType: EndOfLine,
+  text: string
+): CommentContent {
+  const eol = getEOL(eolType);
+  const lines = text.split(eol).map(x => x.trim());
+
+  const flatParagraphText = lines.reduce(
+    (r, x) =>
+      x === ""
+        ? r.concat(r !== "" ? eol : "") // A blank line, which separates two paragraphs.
+        : r.concat(r !== "" && !r.endsWith(eol) ? " " : "", x),
+    ""
+  );
+
+  const flatParagraphLines = flatParagraphText.split(eol);
+
+  // Removing blank lines and turning them into paragraph format hints (bottom
+  // margin).
+  const nonEmptyLineIndices = flatParagraphLines
+    .map((x, i) => (x !== "" ? i : -1))
+    .filter(x => x !== -1);
+
+  if (0 === nonEmptyLineIndices.length) {
+    return new CommentContent("", []);
+  }
+
+  const paragraphs = nonEmptyLineIndices.map(
+    x => new Paragraph(flatParagraphLines[x], flatParagraphLines[x])
+  );
+
+  // Setting bottom margins.
+  nonEmptyLineIndices.forEach((x, i, a) => {
+    paragraphs[i].formatHints.bottomMargin =
+      i + 1 < a.length ? a[i + 1] - a[i] : 0;
+  });
+
+  const resultText = paragraphs.reduce(
+    (r, x) => r.concat(r !== "" ? eol : "", x.text),
+    ""
+  );
+
+  return new CommentContent(resultText, paragraphs);
 }
 
 export function getMaxLineLength(

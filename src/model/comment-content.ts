@@ -1,3 +1,9 @@
+import { Paragraph } from "./paragraph";
+
 export class CommentContent {
-  constructor(public readonly text: string, public formatHints?: any) {}
+  constructor(
+    public text: string,
+    public paragraphs: Paragraph[],
+    public formatHints?: any
+  ) {}
 }

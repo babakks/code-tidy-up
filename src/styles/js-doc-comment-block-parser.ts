@@ -4,9 +4,14 @@ import { Parser } from "../model/parser";
 import { CommentContent } from "../model/comment-content";
 import { JSDocCommentBlockFormatHints } from "./js-doc-comment-block-format-hints";
 import { FormatOptions } from "../model/format-options";
+import { Paragraph } from "../model/paragraph";
+import { PlainParser } from "./plain-parser";
 
 export class JSDocCommentBlockParser implements Parser {
-  constructor(private config: FormatOptions) {}
+  constructor(
+    private plainParser: PlainParser,
+    private options: FormatOptions
+  ) {}
 
   findRange(
     document: vscode.TextDocument,
@@ -112,59 +117,149 @@ export class JSDocCommentBlockParser implements Parser {
     document: vscode.TextDocument,
     range: vscode.Range
   ): CommentContent | undefined {
-    const jsDocKeywordRegex = /^\* \@.*/; // Checks for @keyword at the beginning.
+    const jsDocKeywordRegex = /^\@.*/; // Checks for @keyword at the beginning.
+    const asterisksRemovalRegex = /^\*\s*(.*)/;
     const lines = getLinesArray(document.eol, document.getText(range));
     const eol = getEOL(document.eol);
 
-    let passedFirstKeyword = false;
-    const text = lines
-      .reduce((result, x) => {
-        const text = x.trim();
+    const plainText = lines.reduce((r, x) => {
+      const text = x.trim();
 
-        /** NOTE: Another abstraction level is required. That is, another method
-         * that gets the comment block and translates it into a preformatted
-         * text, just by removing comment marker symbols (// or * in JSDocs).
-         * Thereafter, the control should come to the current method.
-         */
-        
-        if (text === "/**" || text === "*/" || text === "") {
-          return result;
-        }
+      if (text === "/**" || text === "*/") {
+        return r;
+      }
 
-        if (jsDocKeywordRegex.test(text)) {
-          if (
-            this.config.jsDocCommentBlock.spaceAfterSummary &&
-            !passedFirstKeyword
-          ) {
-            result = result.concat(eol);
-          }
+      const textWithoutBeginningAsterisks = text.replace(
+        asterisksRemovalRegex,
+        "$1"
+      );
 
-          passedFirstKeyword = true;
-          return result.concat(eol + text.substring(1).trim());
-        } else {
-          return result.concat(text.substring(1));
-        }
-      }, "")
-      .trim();
+      if (textWithoutBeginningAsterisks === "") {
+        // This is a blank line. So, inserting a new line, if not at the first
+        // of the comment.
+        return r === ""
+          ? ""
+          : r.endsWith(eol + eol)
+            ? r.concat(eol)
+            : r.concat(eol + eol);
+      }
 
-    const formatHints = this.extractFormatHints(document, range);
+      if (jsDocKeywordRegex.test(textWithoutBeginningAsterisks)) {
+        // This is a line that starts with a JSDoc keyword (e.g., @param). So,
+        // inserting a new line, if not at the first of the comment.
 
-    return new CommentContent(text, formatHints);
-  }
+        r = r.concat(r.endsWith(eol + eol) ? "" : eol + eol);
+      }
 
-  extractFormatHints(
-    document: vscode.TextDocument,
-    range: vscode.Range
-  ): JSDocCommentBlockFormatHints {
-    const result = new JSDocCommentBlockFormatHints();
+      return r.concat(
+        r === "" || r.endsWith(eol) ? "" : " ",
+        textWithoutBeginningAsterisks
+      );
+    }, "");
 
-    result.indent =
-      3 + document.lineAt(range.start.line).firstNonWhitespaceCharacterIndex;
+    // Using plain text formatter to get content.
+    const result = this.plainParser.getContentFromPlainText(
+      plainText,
+      document.eol
+    );
+
+    if (!result) {
+      return undefined;
+    }
+
+    this.updateFormatHints(document, range, result);
 
     return result;
   }
-}
 
+  updateFormatHints(
+    document: vscode.TextDocument,
+    range: vscode.Range,
+    content: CommentContent
+  ): void {
+    content.formatHints = new JSDocCommentBlockFormatHints();
+    const hints = content.formatHints as JSDocCommentBlockFormatHints;
+
+    this.setCommentIndentationFormatHints(document, range, hints);
+    this.setParagraphHints(content);
+  }
+
+  private setCommentIndentationFormatHints(
+    document: vscode.TextDocument,
+    range: vscode.Range,
+    result: JSDocCommentBlockFormatHints
+  ) {
+    result.indent =
+      3 + document.lineAt(range.start.line).firstNonWhitespaceCharacterIndex;
+  }
+
+  setParagraphHints(content: CommentContent): any {
+    this.removeSpaceAfterParagraphs(content);
+    this.setSpaceAfterSummaryFormatHints(content);
+    this.setKeywordHangingIndentationFormatHints(content);
+  }
+
+  private setSpaceAfterSummaryFormatHints(content: CommentContent) {
+    if (0 < this.options.jsDocCommentBlock.spaceAfterSummary) {
+      const firstKeywordParagraphIndexAfterSummary = this.getFirstParagraphIndexStartedWithKeyword(
+        content.paragraphs,
+        0,
+        ["summary"]
+      );
+      if (0 < firstKeywordParagraphIndexAfterSummary) {
+        content.paragraphs[
+          -1 + firstKeywordParagraphIndexAfterSummary
+        ].formatHints.bottomMargin = this.options.jsDocCommentBlock.spaceAfterSummary;
+      }
+    }
+  }
+
+  private removeSpaceAfterParagraphs(content: CommentContent) {
+    content.paragraphs.forEach(x => {
+      x.formatHints.bottomMargin = 0;
+    });
+  }
+
+  private setKeywordHangingIndentationFormatHints(content: CommentContent) {
+    if (0 < this.options.jsDocCommentBlock.keywordHangingIndentation) {
+      content.paragraphs.forEach(x => {
+        if (this.beginsWithKeyword(x.text)) {
+          x.formatHints.hangingIndent = this.options.jsDocCommentBlock.keywordHangingIndentation;
+        }
+      });
+    }
+  }
+
+  getFirstParagraphIndexStartedWithKeyword(
+    paragraphs: Paragraph[],
+    start: number = 0,
+    ignoreKeywords: string[] = []
+  ): number {
+    return paragraphs.findIndex((x, i) => {
+      if (i < start) {
+        return false;
+      }
+
+      const keyword = this.getBeginningKeyword(x.text);
+      return keyword !== undefined && ignoreKeywords.indexOf(keyword) === -1;
+    });
+  }
+
+  beginsWithKeyword(text: string, keyword?: string): boolean {
+    const beginningKeyword = this.getBeginningKeyword(text);
+
+    return (
+      beginningKeyword !== undefined &&
+      (!keyword || beginningKeyword === keyword)
+    );
+  }
+
+  getBeginningKeyword(text: string): string | undefined {
+    const regex = /^\@([^ ]*).*/;
+    const captures = regex.exec(text);
+    return !captures ? undefined : captures[1];
+  }
+}
 enum SearchDirection {
   Up,
   Down
